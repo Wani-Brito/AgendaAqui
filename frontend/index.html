@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f4">
+  <title>AgendaAqui | Seus horários em ordem</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="layout">
+    <section class="auth-view" id="auth-view">
+      <a class="brand auth-brand" href="/" aria-label="AgendaAqui, início">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <span>agenda<span class="brand-light">aqui</span></span>
+      </a>
+      <div class="panel auth-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">SUA AGENDA, PROTEGIDA</p>
+            <h1 class="auth-title">Bem-vindo de volta.</h1>
+          </div>
+          <span class="heading-icon" aria-hidden="true">↗</span>
+        </div>
+        <p class="auth-copy">Entre com seu usuário e sua senha para acessar seus compromissos.</p>
+        <form class="auth-form" id="login-form">
+          <label for="login-username">Usuário</label>
+          <input id="login-username" name="username" autocomplete="username" minlength="3" maxlength="64" required>
+          <label for="login-password">Senha</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="button button-primary login-button" id="login-button" type="submit">Entrar na agenda</button>
+          <p class="message hidden" id="login-message" role="alert"></p>
+        </form>
+      </div>
+      <p class="auth-footnote">Seus dados de acesso são protegidos e armazenados com segurança.</p>
+    </section>
+
+    <div id="app-view" class="hidden">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="AgendaAqui, início">
+          <span class="brand-mark" aria-hidden="true">A</span>
+          <span>agenda<span class="brand-light">aqui</span></span>
+        </a>
+        <div class="topbar-actions">
+          <span class="today" id="today-label"></span>
+          <button class="button button-quiet admin-tab hidden" id="admin-tab" type="button">Admin</button>
+          <button class="button button-quiet logout-button" id="logout-button" type="button">Sair</button>
+        </div>
+      </header>
+
+      <div id="agenda-view">
+        <section class="intro">
+          <div>
+            <p class="eyebrow">ORGANIZAÇÃO SEM COMPLICAÇÃO</p>
+            <h1>Seu tempo, <span>bem cuidado.</span></h1>
+            <p class="intro-copy">Organize os compromissos do dia e deixe cada horário no lugar.</p>
+          </div>
+          <div class="intro-icon" aria-hidden="true">✳</div>
+        </section>
+
+        <section class="content-grid" aria-label="Agenda de compromissos">
+          <section class="panel form-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">AGENDA</p>
+                <h2 id="form-heading">Novo compromisso</h2>
+              </div>
+              <span class="heading-icon" aria-hidden="true">＋</span>
+            </div>
+
+            <form id="appointment-form">
+              <input id="appointment-id" type="hidden">
+              <label for="title">Compromisso</label>
+              <input id="title" name="title" maxlength="120" placeholder="Ex.: Consulta de retorno" required>
+
+              <label for="client">Cliente ou responsável</label>
+              <input id="client" name="client" maxlength="120" placeholder="Nome da pessoa" required>
+
+              <div class="field-row">
+                <div>
+                  <label for="date">Data</label>
+                  <input id="date" name="date" type="date" required>
+                </div>
+                <div>
+                  <label for="start-time">Horário</label>
+                  <div class="time-row">
+                    <input id="start-time" name="startTime" type="time" aria-label="Horário inicial" required>
+                    <span aria-hidden="true">–</span>
+                    <input id="end-time" name="endTime" type="time" aria-label="Horário final" required>
+                  </div>
+                </div>
+              </div>
+
+              <label for="notes">Observações <span class="optional">(opcional)</span></label>
+              <textarea id="notes" name="notes" rows="3" maxlength="500" placeholder="Algum detalhe importante?"></textarea>
+
+              <div class="form-actions">
+                <button class="button button-primary" id="save-button" type="submit">Salvar compromisso</button>
+                <button class="button button-quiet hidden" id="cancel-edit" type="button">Cancelar edição</button>
+              </div>
+              <p class="message hidden" id="form-message" role="status"></p>
+            </form>
+          </section>
+
+          <section class="panel list-panel">
+            <div class="panel-heading list-heading">
+              <div>
+                <p class="eyebrow">SEUS HORÁRIOS</p>
+                <h2>Compromissos</h2>
+              </div>
+              <span class="count" id="appointment-count">0</span>
+            </div>
+            <div class="appointment-list" id="appointment-list" aria-live="polite">
+              <p class="empty-state">Carregando compromissos...</p>
+            </div>
+          </section>
+        </section>
+
+        <footer>Feito para deixar sua rotina mais leve. <span>✳</span></footer>
+      </div>
+
+      <section class="admin-view hidden" id="admin-view" aria-label="Painel de administração">
+        <section class="intro admin-intro">
+          <div>
+            <p class="eyebrow">CONTROLE DE ACESSO</p>
+            <h1>Painel <span>Admin.</span></h1>
+            <p class="intro-copy">Gerencie contas e acompanhe todos os compromissos da agenda.</p>
+          </div>
+          <button class="button button-quiet" id="back-to-agenda" type="button">Voltar à agenda</button>
+        </section>
+
+        <section class="admin-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NOVO ACESSO</p>
+                <h2>Criar usuário</h2>
+              </div>
+              <span class="heading-icon" aria-hidden="true">＋</span>
+            </div>
+            <form id="user-form">
+              <label for="new-username">Usuário</label>
+              <input id="new-username" name="username" minlength="3" maxlength="64" pattern="[A-Za-z0-9_.-]{3,64}" autocomplete="off" required>
+              <label for="new-password">Senha inicial</label>
+              <input id="new-password" name="password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required>
+              <p class="auth-copy">A senha deve ter pelo menos 12 caracteres. O usuário poderá entrar e ver somente os próprios compromissos.</p>
+              <button class="button button-primary login-button" id="create-user-button" type="submit">Criar usuário</button>
+              <p class="message hidden" id="user-form-message" role="status"></p>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading list-heading">
+              <div>
+                <p class="eyebrow">CONTAS DO SISTEMA</p>
+                <h2>Usuários</h2>
+              </div>
+              <span class="count" id="user-count">0</span>
+            </div>
+            <div class="admin-list" id="user-list" aria-live="polite">
+              <p class="empty-state">Carregando usuários...</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel admin-appointments-panel">
+          <div class="panel-heading list-heading">
+            <div>
+              <p class="eyebrow">VISÃO COMPLETA</p>
+              <h2>Todas as consultas</h2>
+            </div>
+            <span class="count" id="admin-appointment-count">0</span>
+          </div>
+          <div class="appointment-list" id="admin-appointment-list" aria-live="polite">
+            <p class="empty-state">Carregando consultas...</p>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

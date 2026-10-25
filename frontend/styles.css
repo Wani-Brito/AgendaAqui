@@ -1,0 +1,134 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #20271f;
+  background: #f5f7f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --green: #286b4b;
+  --green-dark: #20563c;
+  --muted: #788078;
+  --line: #e7ebe5;
+  --paper: #fff;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+
+.layout { width: min(1120px, calc(100% - 48px)); margin: 0 auto; }
+.topbar { position: sticky; top: 0; z-index: 5; height: 84px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e8ece6; background: rgb(245 247 244 / 96%); backdrop-filter: blur(12px); }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: #253d30; font-family: "Segoe UI", Arial, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -1px; text-decoration: none; }
+.brand-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 11px; background: var(--green); color: white; font-size: 17px; }
+.brand-light { color: var(--green); font-weight: 500; }
+.today { color: var(--muted); font-size: 13px; }
+.topbar-actions { display: flex; align-items: center; gap: 16px; }
+.logout-button { min-height: 35px; padding: 0 12px; }
+.admin-tab { min-height: 35px; padding: 0 13px; color: var(--green); }
+
+.auth-view { width: min(100%, 450px); margin: max(58px, 11vh) auto 0; }
+.auth-brand { margin: 0 0 25px 3px; }
+.auth-panel { padding: 32px; }
+.auth-panel .panel-heading { margin-bottom: 13px; }
+.auth-panel h1 { margin: 0; font-size: clamp(25px, 5vw, 31px); letter-spacing: -1.1px; }
+.auth-copy { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.auth-form input { min-height: 46px; }
+.login-button { width: 100%; margin-top: 22px; }
+.auth-footnote { margin: 18px 0 0; color: #929a92; font-size: 11px; text-align: center; }
+
+.intro { display: flex; align-items: center; justify-content: space-between; padding: 57px 0 43px; }
+.eyebrow { margin: 0 0 11px; color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: 1.65px; }
+h1, h2, p { margin-top: 0; }
+h1, h2 { font-family: "Segoe UI", Arial, sans-serif; }
+h1 { margin-bottom: 10px; font-size: clamp(32px, 5vw, 48px); font-weight: 700; letter-spacing: -2.1px; line-height: 1.15; }
+h1 span { color: var(--green); }
+.intro-copy { margin-bottom: 0; color: var(--muted); font-size: 14px; }
+.intro-icon { display: grid; width: 78px; height: 78px; place-items: center; border: 1px solid #dce8dc; border-radius: 50%; color: #4e8b65; font-size: 37px; }
+
+.content-grid { display: grid; grid-template-columns: minmax(320px, .85fr) minmax(380px, 1.15fr); gap: 22px; align-items: start; }
+.panel { padding: 27px; border: 1px solid #ebeee9; border-radius: 18px; background: var(--paper); box-shadow: 0 8px 28px rgb(42 68 48 / 4%); }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.panel-heading .eyebrow { margin-bottom: 7px; }
+h2 { margin-bottom: 0; font-size: 20px; font-weight: 700; letter-spacing: -.5px; }
+.heading-icon { display: grid; width: 37px; height: 37px; place-items: center; border-radius: 11px; background: #edf5ee; color: var(--green); font-size: 22px; }
+
+form label { display: block; margin: 16px 0 7px; color: #414941; font-size: 12px; font-weight: 600; }
+form input, form textarea { width: 100%; border: 1px solid #e3e8e1; border-radius: 9px; outline: none; background: #fff; color: #27312a; font-size: 13px; transition: border-color .15s, box-shadow .15s; }
+form input { min-height: 43px; padding: 0 12px; }
+form textarea { min-height: 78px; padding: 11px 12px; resize: vertical; }
+form input:focus, form textarea:focus { border-color: #79a98a; box-shadow: 0 0 0 3px rgb(40 107 75 / 9%); }
+form input::placeholder, form textarea::placeholder { color: #a4aca4; }
+.optional { color: #969e96; font-weight: 400; }
+.field-row { display: grid; grid-template-columns: .75fr 1.25fr; gap: 12px; }
+.time-row { display: flex; align-items: center; gap: 6px; }
+.time-row input { min-width: 0; padding: 0 7px; }
+.time-row span { color: #929a92; }
+.form-actions { display: flex; gap: 10px; margin-top: 23px; }
+.button { min-height: 43px; padding: 0 16px; border: 0; border-radius: 9px; font-size: 12px; font-weight: 700; transition: background .15s; }
+.button-primary { flex: 1; background: var(--green); color: white; }
+.button-primary:hover { background: var(--green-dark); }
+.button-quiet { background: #f0f3ef; color: #4f5a50; }
+.button-quiet:hover { background: #e6ece5; }
+.hidden { display: none !important; }
+.message { margin: 12px 0 0; font-size: 12px; }
+.message.error { color: #b34338; }
+.message.success { color: var(--green); }
+
+.list-heading { margin-bottom: 17px; }
+.count { display: grid; min-width: 30px; height: 30px; place-items: center; padding: 0 8px; border-radius: 9px; background: #edf5ee; color: var(--green); font-size: 12px; font-weight: 700; }
+.appointment-list { display: grid; gap: 10px; }
+.empty-state { margin: 0; padding: 38px 12px; border: 1px dashed #dfe6dc; border-radius: 12px; color: var(--muted); font-size: 13px; text-align: center; }
+.appointment-card { display: grid; grid-template-columns: 55px 1fr auto; gap: 13px; align-items: center; padding: 14px; border: 1px solid #edf0ec; border-radius: 12px; }
+.appointment-time { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 9px; background: #f1f6f0; color: var(--green); font-size: 11px; font-weight: 700; line-height: 1.65; }
+.appointment-info { min-width: 0; }
+.appointment-info h3 { overflow: hidden; margin: 0 0 4px; color: #28322b; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.appointment-info p { overflow: hidden; margin: 0; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.appointment-notes { margin-top: 6px !important; color: #707b70 !important; white-space: normal !important; }
+.card-actions { display: flex; gap: 5px; }
+.icon-button { display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #758075; font-size: 14px; }
+.icon-button:hover { background: #f1f4f0; color: var(--green); }
+.icon-button.delete:hover { background: #fff0ee; color: #b34338; }
+
+.admin-intro { align-items: end; }
+.admin-intro .button { min-height: 40px; }
+.admin-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); gap: 20px; align-items: start; }
+.admin-grid .panel { min-width: 0; }
+.admin-appointments-panel { margin-top: 20px; }
+.admin-list { display: grid; gap: 9px; max-height: 430px; overflow-y: auto; }
+.user-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #edf0ec; border-radius: 11px; }
+.user-info { min-width: 0; }
+.user-info h3 { overflow: hidden; margin: 0 0 4px; color: #28322b; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.user-info p { margin: 0; color: var(--muted); font-size: 11px; }
+.user-toggle { min-height: 34px; padding: 0 11px; white-space: nowrap; }
+.admin-appointments-panel .appointment-card { grid-template-columns: 55px minmax(0, 1fr); }
+
+footer { padding: 35px 0 28px; color: #929a92; font-size: 11px; text-align: center; }
+footer span { color: var(--green); }
+
+@media (max-width: 760px) {
+  .layout { width: min(100% - 30px, 560px); }
+  .topbar { height: 68px; }
+  .topbar-actions { gap: 7px; }
+  .today { display: none; }
+  .intro { padding: 42px 0 30px; }
+  .intro-icon { width: 56px; height: 56px; font-size: 28px; }
+  .content-grid { grid-template-columns: 1fr; gap: 15px; }
+  .admin-grid { grid-template-columns: 1fr; gap: 15px; }
+  .admin-intro { align-items: start; flex-direction: column; gap: 18px; }
+  .admin-appointments-panel { margin-top: 15px; }
+  .panel { padding: 21px; }
+  footer { padding-top: 25px; }
+}
+
+@media (max-width: 430px) {
+  .layout { width: calc(100% - 24px); }
+  .auth-view { margin-top: 9vh; }
+  .auth-panel { padding: 23px; }
+  .admin-appointments-panel .appointment-card { grid-template-columns: 49px minmax(0, 1fr); }
+  .intro-icon { display: none; }
+  .intro-copy { max-width: 290px; line-height: 1.6; }
+  .field-row { grid-template-columns: 1fr; gap: 0; }
+  .appointment-card { grid-template-columns: 49px minmax(0, 1fr) auto; gap: 8px; padding: 10px; }
+  .card-actions { flex-direction: column; }
+}
