@@ -270,6 +270,12 @@ public:
         }
     }
 
+    void bindNull(int index) {
+        if (sqlite3_bind_null(statement_, index) != SQLITE_OK) {
+            throw std::runtime_error(sqlite3_errmsg(database.get()));
+        }
+    }
+
 private:
     sqlite3_stmt* statement_ = nullptr;
 };
@@ -322,9 +328,46 @@ void migrateDatabase() {
             "ALTER TABLE appointments ADD COLUMN owner_user_id INTEGER "
             "REFERENCES users(id) ON DELETE SET NULL");
     }
+    if (!tableHasColumn("appointments", "availability_slot_id")) {
+        executeSql(
+            "ALTER TABLE appointments ADD COLUMN availability_slot_id INTEGER "
+            "REFERENCES availability_slots(id) ON DELETE SET NULL");
+    }
+    if (!tableHasColumn("appointments", "payment_type")) {
+        executeSql(
+            "ALTER TABLE appointments ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'particular'");
+    }
+    if (!tableHasColumn("appointments", "insurance_name")) {
+        executeSql(
+            "ALTER TABLE appointments ADD COLUMN insurance_name TEXT NOT NULL DEFAULT ''");
+    }
+    if (!tableHasColumn("appointments", "confirmed_at")) {
+        executeSql("ALTER TABLE appointments ADD COLUMN confirmed_at TEXT");
+    }
+    if (!tableHasColumn("availability_slots", "specialty")) {
+        executeSql(
+            "ALTER TABLE availability_slots ADD COLUMN specialty TEXT NOT NULL "
+            "DEFAULT 'Clínica geral'");
+    }
+    const bool has_legacy_doctor_name = tableHasColumn("availability_slots", "doctor_name");
+    if (!tableHasColumn("availability_slots", "professional_name")) {
+        executeSql(
+            "ALTER TABLE availability_slots ADD COLUMN professional_name TEXT NOT NULL DEFAULT ''");
+    }
+    if (has_legacy_doctor_name) {
+        executeSql(
+            "UPDATE availability_slots SET professional_name = doctor_name "
+            "WHERE professional_name = '' AND trim(doctor_name) != ''");
+    }
     executeSql(
         "CREATE INDEX IF NOT EXISTS idx_appointments_owner_date_time "
         "ON appointments (owner_user_id, appointment_date, start_time, end_time)");
+    executeSql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_availability_slot "
+        "ON appointments (availability_slot_id) WHERE availability_slot_id IS NOT NULL");
+    executeSql(
+        "CREATE INDEX IF NOT EXISTS idx_availability_slots_specialty_date "
+        "ON availability_slots (specialty, appointment_date, start_time)");
 }
 
 std::string trimText(std::string value) {
@@ -500,7 +543,17 @@ Json appointmentFromRow(sqlite3_stmt* statement) {
         {"startTime", text(4)},
         {"endTime", text(5)},
         {"notes", text(6)},
-        {"ownerUsername", text(7)}
+        {"ownerUsername", text(7)},
+        {"availabilitySlotId", sqlite3_column_type(statement, 8) == SQLITE_NULL
+             ? Json(nullptr)
+             : Json(sqlite3_column_int64(statement, 8))},
+        {"specialty", text(9)},
+        {"professionalName", text(10)},
+        {"paymentType", text(11)},
+        {"insuranceName", text(12)},
+        {"confirmedAt", sqlite3_column_type(statement, 13) == SQLITE_NULL
+             ? Json(nullptr)
+             : Json(text(13))}
     };
 }
 
@@ -508,15 +561,27 @@ Json listAppointments(const AuthenticatedUser& user, bool admin_view = false) {
     Statement statement(
         database.get(),
         user.isAdmin() && admin_view
-            ? "SELECT appointments.id, title, client, appointment_date, start_time, end_time, notes, "
-              "COALESCE(users.username, 'Conta removida') "
+            ? "SELECT appointments.id, appointments.title, appointments.client, "
+              "appointments.appointment_date, appointments.start_time, appointments.end_time, "
+              "appointments.notes, "
+              "COALESCE(users.username, 'Conta removida'), availability_slot_id, "
+              "COALESCE(availability_slots.specialty, ''), "
+              "COALESCE(availability_slots.professional_name, ''), "
+              "appointments.payment_type, appointments.insurance_name, appointments.confirmed_at "
               "FROM appointments LEFT JOIN users ON users.id = appointments.owner_user_id "
-              "ORDER BY appointment_date, start_time"
-            : "SELECT appointments.id, title, client, appointment_date, start_time, end_time, notes, "
-              "users.username FROM appointments "
+              "LEFT JOIN availability_slots ON availability_slots.id = appointments.availability_slot_id "
+              "ORDER BY appointments.appointment_date, appointments.start_time"
+            : "SELECT appointments.id, appointments.title, appointments.client, "
+              "appointments.appointment_date, appointments.start_time, appointments.end_time, "
+              "appointments.notes, "
+              "users.username, availability_slot_id, COALESCE(availability_slots.specialty, ''), "
+              "COALESCE(availability_slots.professional_name, ''), "
+              "appointments.payment_type, appointments.insurance_name, appointments.confirmed_at "
+              "FROM appointments "
               "JOIN users ON users.id = appointments.owner_user_id "
+              "LEFT JOIN availability_slots ON availability_slots.id = appointments.availability_slot_id "
               "WHERE appointments.owner_user_id = ? "
-              "ORDER BY appointment_date, start_time");
+              "ORDER BY appointments.appointment_date, appointments.start_time");
     if (!(user.isAdmin() && admin_view)) {
         statement.bind(1, user.id);
     }
@@ -529,6 +594,187 @@ Json listAppointments(const AuthenticatedUser& user, bool admin_view = false) {
         throw std::runtime_error(sqlite3_errmsg(database.get()));
     }
     return appointments;
+}
+
+Json listNotifications(const AuthenticatedUser& user) {
+    const bool admin_view = user.isAdmin();
+    Statement statement(
+        database.get(),
+        admin_view
+            ? "SELECT appointments.id, COALESCE(users.username, 'Conta removida'), "
+              "appointments.appointment_date, appointments.start_time, "
+              "COALESCE(availability_slots.specialty, appointments.title), "
+              "COALESCE(availability_slots.professional_name, ''), "
+              "appointments.payment_type, appointments.insurance_name, appointments.confirmed_at "
+              "FROM appointments "
+              "LEFT JOIN users ON users.id = appointments.owner_user_id "
+              "LEFT JOIN availability_slots ON availability_slots.id = appointments.availability_slot_id "
+              "WHERE appointments.confirmed_at IS NOT NULL "
+              "AND datetime(appointments.confirmed_at) >= datetime('now', 'localtime', '-7 days') "
+              "ORDER BY datetime(appointments.confirmed_at) DESC"
+            : "SELECT appointments.id, COALESCE(users.username, ''), "
+              "appointments.appointment_date, appointments.start_time, "
+              "COALESCE(availability_slots.specialty, appointments.title), "
+              "COALESCE(availability_slots.professional_name, ''), "
+              "appointments.payment_type, appointments.insurance_name, appointments.confirmed_at "
+              "FROM appointments "
+              "LEFT JOIN users ON users.id = appointments.owner_user_id "
+              "LEFT JOIN availability_slots ON availability_slots.id = appointments.availability_slot_id "
+              "WHERE appointments.owner_user_id = ? "
+              "AND datetime(appointments.appointment_date || ' ' || appointments.start_time) "
+              "> datetime('now', 'localtime') "
+              "AND datetime(appointments.appointment_date || ' ' || appointments.start_time) "
+              "<= datetime('now', 'localtime', '+24 hours') "
+              "ORDER BY appointments.appointment_date, appointments.start_time");
+    if (!admin_view) {
+        statement.bind(1, user.id);
+    }
+
+    const auto text = [&statement](int column) {
+        const auto* value = sqlite3_column_text(statement.get(), column);
+        return value == nullptr ? std::string() : std::string(reinterpret_cast<const char*>(value));
+    };
+    Json notifications = Json::array();
+    int result = SQLITE_ROW;
+    while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+        Json notification = {
+            {"appointmentId", sqlite3_column_int64(statement.get(), 0)},
+            {"date", text(2)},
+            {"startTime", text(3)},
+            {"specialty", text(4)},
+            {"professionalName", text(5)},
+            {"paymentType", text(6)},
+            {"insuranceName", text(7)},
+            {"status", sqlite3_column_type(statement.get(), 8) == SQLITE_NULL ? "pending" : "confirmed"},
+            {"confirmedAt", sqlite3_column_type(statement.get(), 8) == SQLITE_NULL
+                 ? Json(nullptr)
+                 : Json(text(8))}
+        };
+        if (admin_view) {
+            notification["patientUsername"] = text(1);
+        }
+        notifications.push_back(std::move(notification));
+    }
+    if (result != SQLITE_DONE) {
+        throw std::runtime_error(sqlite3_errmsg(database.get()));
+    }
+    return notifications;
+}
+
+Json availabilityFromRow(sqlite3_stmt* statement) {
+    const auto text = [statement](int column) {
+        const auto* value = sqlite3_column_text(statement, column);
+        return value == nullptr ? std::string() : std::string(reinterpret_cast<const char*>(value));
+    };
+    return {
+        {"id", sqlite3_column_int64(statement, 0)},
+        {"date", text(1)},
+        {"startTime", text(2)},
+        {"endTime", text(3)},
+        {"isBooked", sqlite3_column_int(statement, 4) != 0},
+        {"specialty", text(5)},
+        {"bookedBy", text(6)},
+        {"professionalName", text(7)}
+    };
+}
+
+Json listAvailability(bool admin_view) {
+    Statement statement(
+        database.get(),
+        admin_view
+            ? "SELECT availability_slots.id, availability_slots.appointment_date, "
+              "availability_slots.start_time, availability_slots.end_time, "
+              "appointments.id IS NOT NULL, availability_slots.specialty, "
+              "COALESCE(users.username, ''), availability_slots.professional_name "
+              "FROM availability_slots "
+              "LEFT JOIN appointments ON appointments.availability_slot_id = availability_slots.id "
+              "LEFT JOIN users ON users.id = appointments.owner_user_id "
+              "ORDER BY availability_slots.appointment_date, availability_slots.start_time"
+            : "SELECT availability_slots.id, appointment_date, start_time, end_time, 0, "
+              "specialty, '', professional_name "
+              "FROM availability_slots WHERE (appointment_date > date('now', 'localtime') "
+              "OR (appointment_date = date('now', 'localtime') "
+              "AND time(start_time) > time('now', 'localtime'))) "
+              "AND NOT EXISTS (SELECT 1 FROM appointments "
+              "WHERE appointments.availability_slot_id = availability_slots.id) "
+              "ORDER BY appointment_date, start_time");
+    Json slots = Json::array();
+    int result = SQLITE_ROW;
+    while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+        slots.push_back(availabilityFromRow(statement.get()));
+    }
+    if (result != SQLITE_DONE) {
+        throw std::runtime_error(sqlite3_errmsg(database.get()));
+    }
+    return slots;
+}
+
+bool slotIsAvailable(
+    sqlite3_int64 slot_id,
+    const std::string& date,
+    const std::string& start,
+    const std::string& end,
+    sqlite3_int64 excluded_appointment_id = 0) {
+    Statement statement(
+        database.get(),
+        "SELECT 1 FROM availability_slots "
+        "WHERE id = ? AND appointment_date = ? AND start_time = ? AND end_time = ? "
+        "AND (appointment_date > date('now', 'localtime') "
+        "OR (appointment_date = date('now', 'localtime') "
+        "AND time(start_time) > time('now', 'localtime'))) "
+        "AND NOT EXISTS (SELECT 1 FROM appointments "
+        "WHERE availability_slot_id = availability_slots.id AND id != ?) LIMIT 1");
+    statement.bind(1, slot_id);
+    statement.bind(2, date);
+    statement.bind(3, start);
+    statement.bind(4, end);
+    statement.bind(5, excluded_appointment_id);
+    const int result = sqlite3_step(statement.get());
+    if (result != SQLITE_ROW && result != SQLITE_DONE) {
+        throw std::runtime_error(sqlite3_errmsg(database.get()));
+    }
+    return result == SQLITE_ROW;
+}
+
+bool hasAvailabilityConflict(
+    const std::string& date,
+    const std::string& start,
+    const std::string& end,
+    const std::string& specialty,
+    const std::string& professional_name,
+    sqlite3_int64 excluded_slot_id = 0) {
+    Statement statement(
+        database.get(),
+        "SELECT 1 FROM availability_slots "
+        "WHERE appointment_date = ? AND start_time < ? AND end_time > ? AND id != ? "
+        "AND specialty = ? COLLATE NOCASE "
+        "AND professional_name = ? COLLATE NOCASE LIMIT 1");
+    statement.bind(1, date);
+    statement.bind(2, end);
+    statement.bind(3, start);
+    statement.bind(4, excluded_slot_id);
+    statement.bind(5, specialty);
+    statement.bind(6, professional_name);
+    const int result = sqlite3_step(statement.get());
+    if (result != SQLITE_ROW && result != SQLITE_DONE) {
+        throw std::runtime_error(sqlite3_errmsg(database.get()));
+    }
+    return result == SQLITE_ROW;
+}
+
+bool isFutureAvailability(const std::string& date, const std::string& start) {
+    Statement statement(
+        database.get(),
+        "SELECT ? > date('now', 'localtime') OR "
+        "(? = date('now', 'localtime') AND time(?) > time('now', 'localtime'))");
+    statement.bind(1, date);
+    statement.bind(2, date);
+    statement.bind(3, start);
+    const int result = sqlite3_step(statement.get());
+    if (result != SQLITE_ROW) {
+        throw std::runtime_error(sqlite3_errmsg(database.get()));
+    }
+    return sqlite3_column_int(statement.get(), 0) != 0;
 }
 
 bool isValidDate(const std::string& value) {
@@ -554,16 +800,26 @@ bool isValidTime(const std::string& value) {
     return std::regex_match(value, pattern);
 }
 
-bool readAppointment(const Json& body, Json& appointment, std::string& error) {
+bool readAppointment(
+    const Json& body,
+    const AuthenticatedUser& user,
+    Json& appointment,
+    std::string& error) {
     if (!body.is_object()) {
         error = "Envie os dados do compromisso em formato JSON.";
         return false;
     }
-    for (const auto* field : {"title", "client", "date", "startTime", "endTime"}) {
+    for (const auto* field : {"date", "startTime", "endTime"}) {
         if (!body.contains(field) || !body[field].is_string()) {
             error = std::string("O campo ") + field + " é obrigatório.";
             return false;
         }
+    }
+    if (user.isAdmin() &&
+        (!body.contains("title") || !body["title"].is_string() ||
+         !body.contains("client") || !body["client"].is_string())) {
+        error = "Informe o tipo de consulta e o paciente.";
+        return false;
     }
     if (body.contains("notes") && !body["notes"].is_string()) {
         error = "O campo notes deve ser um texto.";
@@ -573,6 +829,39 @@ bool readAppointment(const Json& body, Json& appointment, std::string& error) {
     appointment = body;
     if (!appointment.contains("notes")) {
         appointment["notes"] = "";
+    }
+    if (!appointment.contains("paymentType")) {
+        appointment["paymentType"] = "particular";
+    }
+    if (!appointment["paymentType"].is_string()) {
+        error = "Selecione Convênio ou Particular.";
+        return false;
+    }
+    if (!appointment.contains("insuranceName")) {
+        appointment["insuranceName"] = "";
+    }
+    if (!appointment["insuranceName"].is_string()) {
+        error = "O nome do convênio deve ser um texto.";
+        return false;
+    }
+    appointment["insuranceName"] = trimText(appointment["insuranceName"].get<std::string>());
+    const auto payment_type = appointment["paymentType"].get<std::string>();
+    if (payment_type != "particular" && payment_type != "convenio") {
+        error = "Selecione Convênio ou Particular.";
+        return false;
+    }
+    if (payment_type == "convenio" &&
+        (appointment["insuranceName"].get<std::string>().empty() ||
+         appointment["insuranceName"].get<std::string>().size() > 120)) {
+        error = "Informe o nome do convênio (até 120 caracteres).";
+        return false;
+    }
+    if (payment_type == "particular") {
+        appointment["insuranceName"] = "";
+    }
+    if (!user.isAdmin()) {
+        appointment["title"] = "Consulta médica";
+        appointment["client"] = user.username;
     }
     for (const auto* field : {"title", "client"}) {
         appointment[field] = trimText(appointment[field].get<std::string>());
@@ -600,6 +889,31 @@ bool readAppointment(const Json& body, Json& appointment, std::string& error) {
     }
     if (!isValidTime(start) || !isValidTime(end) || start >= end) {
         error = "Informe horários válidos e uma hora final posterior à inicial.";
+        return false;
+    }
+    return true;
+}
+
+bool readAvailabilitySlotId(
+    const Json& body,
+    const AuthenticatedUser& user,
+    sqlite3_int64& slot_id,
+    std::string& error) {
+    slot_id = 0;
+    if (!body.contains("availabilitySlotId")) {
+        if (user.isAdmin()) {
+            return true;
+        }
+        error = "Escolha um horário disponibilizado pelo administrador.";
+        return false;
+    }
+    if (!body["availabilitySlotId"].is_number_integer()) {
+        error = "O horário selecionado é inválido.";
+        return false;
+    }
+    slot_id = body["availabilitySlotId"].get<sqlite3_int64>();
+    if (slot_id <= 0) {
+        error = "O horário selecionado é inválido.";
         return false;
     }
     return true;
@@ -661,6 +975,7 @@ void serveFile(httplib::Response& response, const std::string& relative_path, co
         response.set_content(
             readFile(std::filesystem::path(AGENDA_SOURCE_DIR) / "frontend" / relative_path),
             mime_type);
+        response.set_header("Cache-Control", "no-store");
     } catch (const std::exception& error) {
         std::cerr << "Erro ao servir arquivo: " << error.what() << '\n';
         response.status = 500;
@@ -677,6 +992,101 @@ void registerRoutes(httplib::Server& server) {
     });
     server.Get("/app.js", [](const httplib::Request&, httplib::Response& response) {
         serveFile(response, "app.js", "text/javascript; charset=utf-8");
+    });
+
+    server.Post("/api/auth/register", [](const httplib::Request& request, httplib::Response& response) {
+        try {
+            const auto body = Json::parse(request.body);
+            if (!body.is_object() ||
+                !body.contains("username") || !body["username"].is_string() ||
+                !body.contains("password") || !body["password"].is_string()) {
+                setError(response, 400, "Informe usuário e senha.");
+                return;
+            }
+
+            const auto username = trimText(body["username"].get<std::string>());
+            const auto password = body["password"].get<std::string>();
+            static const std::regex username_pattern(R"(^[A-Za-z0-9_.-]{3,64}$)");
+            if (!std::regex_match(username, username_pattern)) {
+                setError(response, 400, "O usuário deve ter de 3 a 64 caracteres: letras, números, ponto, hífen ou sublinhado.");
+                return;
+            }
+            if (password.size() < 12 || password.size() > 1024) {
+                setError(response, 400, "A senha deve ter entre 12 e 1024 caracteres.");
+                return;
+            }
+
+            const auto token = createSessionToken();
+            const auto expires_at = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count() +
+                session_lifetime_seconds;
+            sqlite3_int64 user_id = 0;
+            {
+                std::lock_guard<std::mutex> lock(database_mutex);
+                executeSql("BEGIN IMMEDIATE");
+                try {
+                    bool username_exists = false;
+                    {
+                        Statement exists(database.get(), "SELECT 1 FROM users WHERE username = ?");
+                        exists.bind(1, username);
+                        const int result = sqlite3_step(exists.get());
+                        if (result == SQLITE_ROW) {
+                            username_exists = true;
+                        } else if (result != SQLITE_DONE) {
+                            throw std::runtime_error(sqlite3_errmsg(database.get()));
+                        }
+                    }
+                    if (username_exists) {
+                        executeSql("ROLLBACK");
+                        setError(response, 409, "Esse usuário já está cadastrado. Escolha outro.");
+                        return;
+                    }
+
+                    {
+                        Statement insert(
+                            database.get(),
+                            legacy_password_hash_column
+                                ? "INSERT INTO users (username, password, password_hash, role) "
+                                  "VALUES (?, ?, '', 'user')"
+                                : "INSERT INTO users (username, password, role) "
+                                  "VALUES (?, ?, 'user')");
+                        insert.bind(1, username);
+                        insert.bind(2, password);
+                        if (sqlite3_step(insert.get()) != SQLITE_DONE) {
+                            throw std::runtime_error(sqlite3_errmsg(database.get()));
+                        }
+                        user_id = sqlite3_last_insert_rowid(database.get());
+                    }
+
+                    {
+                        Statement create_session(
+                            database.get(),
+                            "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)");
+                        create_session.bind(1, hashSessionToken(token));
+                        create_session.bind(2, user_id);
+                        create_session.bind(3, static_cast<sqlite3_int64>(expires_at));
+                        if (sqlite3_step(create_session.get()) != SQLITE_DONE) {
+                            throw std::runtime_error(sqlite3_errmsg(database.get()));
+                        }
+                    }
+                    executeSql("COMMIT");
+                } catch (...) {
+                    executeSql("ROLLBACK");
+                    throw;
+                }
+            }
+
+            setJson(response, {{"username", username}, {"role", "user"}}, 201);
+            response.set_header(
+                "Set-Cookie",
+                "agenda_session=" + token +
+                    "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" +
+                    std::to_string(session_lifetime_seconds));
+        } catch (const Json::parse_error&) {
+            setError(response, 400, "O corpo da requisição não contém JSON válido.");
+        } catch (const std::exception& error) {
+            handleApiError(response, error);
+        }
     });
 
     server.Post("/api/auth/login", [](const httplib::Request& request, httplib::Response& response) {
@@ -941,6 +1351,167 @@ void registerRoutes(httplib::Server& server) {
             }
         });
 
+    server.Get("/api/admin/availability", [](const httplib::Request& request, httplib::Response& response) {
+        try {
+            AuthenticatedUser user;
+            if (!requireAdmin(request, response, user)) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(database_mutex);
+            setJson(response, listAvailability(true));
+        } catch (const std::exception& error) {
+            handleApiError(response, error);
+        }
+    });
+
+    server.Post("/api/admin/availability", [](const httplib::Request& request, httplib::Response& response) {
+        try {
+            AuthenticatedUser admin;
+            if (!requireAdmin(request, response, admin)) {
+                return;
+            }
+            const auto body = Json::parse(request.body);
+            if (!body.is_object() ||
+                !body.contains("specialty") || !body["specialty"].is_string() ||
+                !body.contains("professionalName") || !body["professionalName"].is_string() ||
+                !body.contains("date") || !body["date"].is_string() ||
+                !body.contains("startTime") || !body["startTime"].is_string() ||
+                !body.contains("endTime") || !body["endTime"].is_string()) {
+                setError(response, 400, "Informe a especialidade, o nome do profissional, a data e os horários.");
+                return;
+            }
+            const auto specialty = trimText(body["specialty"].get<std::string>());
+            const auto professional_name = trimText(body["professionalName"].get<std::string>());
+            const auto date = body["date"].get<std::string>();
+            const auto start = body["startTime"].get<std::string>();
+            const auto end = body["endTime"].get<std::string>();
+            if (specialty.empty() || specialty.size() > 100) {
+                setError(response, 400, "A especialidade deve ter entre 1 e 100 caracteres.");
+                return;
+            }
+            if (professional_name.empty() || professional_name.size() > 120) {
+                setError(response, 400, "O nome do profissional deve ter entre 1 e 120 caracteres.");
+                return;
+            }
+            if (!isValidDate(date) || !isValidTime(start) || !isValidTime(end) || start >= end) {
+                setError(response, 400, "Informe uma data e horários válidos.");
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(database_mutex);
+            if (!isFutureAvailability(date, start)) {
+                setError(response, 400, "Cadastre somente horários futuros.");
+                return;
+            }
+            if (hasAvailabilityConflict(date, start, end, specialty, professional_name)) {
+                setError(response, 409, "Já existe um horário ou compromisso nesse intervalo.");
+                return;
+            }
+            Statement appointment_conflict(
+                database.get(),
+                "SELECT 1 FROM appointments "
+                "LEFT JOIN availability_slots ON availability_slots.id = appointments.availability_slot_id "
+                "WHERE appointments.appointment_date = ? AND appointments.start_time < ? "
+                "AND appointments.end_time > ? AND (availability_slots.id IS NULL "
+                "OR (availability_slots.specialty = ? COLLATE NOCASE "
+                "AND availability_slots.professional_name = ? COLLATE NOCASE)) LIMIT 1");
+            appointment_conflict.bind(1, date);
+            appointment_conflict.bind(2, end);
+            appointment_conflict.bind(3, start);
+            appointment_conflict.bind(4, specialty);
+            appointment_conflict.bind(5, professional_name);
+            const int conflict_result = sqlite3_step(appointment_conflict.get());
+            if (conflict_result == SQLITE_ROW) {
+                setError(response, 409, "Já existe um horário ou compromisso nesse intervalo.");
+                return;
+            }
+            if (conflict_result != SQLITE_DONE) {
+                throw std::runtime_error(sqlite3_errmsg(database.get()));
+            }
+
+            const bool has_legacy_doctor_name = tableHasColumn("availability_slots", "doctor_name");
+            Statement insert(
+                database.get(),
+                has_legacy_doctor_name
+                    ? "INSERT INTO availability_slots "
+                      "(specialty, professional_name, doctor_name, appointment_date, "
+                      "start_time, end_time, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    : "INSERT INTO availability_slots "
+                      "(specialty, professional_name, appointment_date, start_time, end_time, "
+                      "created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)");
+            insert.bind(1, specialty);
+            insert.bind(2, professional_name);
+            if (has_legacy_doctor_name) {
+                insert.bind(3, professional_name);
+                insert.bind(4, date);
+                insert.bind(5, start);
+                insert.bind(6, end);
+                insert.bind(7, admin.id);
+            } else {
+                insert.bind(3, date);
+                insert.bind(4, start);
+                insert.bind(5, end);
+                insert.bind(6, admin.id);
+            }
+            if (sqlite3_step(insert.get()) != SQLITE_DONE) {
+                throw std::runtime_error(sqlite3_errmsg(database.get()));
+            }
+            setJson(response, {
+                {"id", sqlite3_last_insert_rowid(database.get())},
+                {"specialty", specialty},
+                {"professionalName", professional_name},
+                {"date", date},
+                {"startTime", start},
+                {"endTime", end},
+                {"isBooked", false}
+            }, 201);
+        } catch (const Json::parse_error&) {
+            setError(response, 400, "O corpo da requisição não contém JSON válido.");
+        } catch (const std::exception& error) {
+            handleApiError(response, error);
+        }
+    });
+
+    server.Delete(
+        R"(/api/admin/availability/(\d+))",
+        [](const httplib::Request& request, httplib::Response& response) {
+            try {
+                AuthenticatedUser admin;
+                if (!requireAdmin(request, response, admin)) {
+                    return;
+                }
+                const auto id = parseId(request.matches[1].str());
+                std::lock_guard<std::mutex> lock(database_mutex);
+                Statement remove(
+                    database.get(),
+                    "DELETE FROM availability_slots WHERE id = ? "
+                    "AND NOT EXISTS (SELECT 1 FROM appointments "
+                    "WHERE appointments.availability_slot_id = availability_slots.id)");
+                remove.bind(1, id);
+                if (sqlite3_step(remove.get()) != SQLITE_DONE) {
+                    throw std::runtime_error(sqlite3_errmsg(database.get()));
+                }
+                if (sqlite3_changes(database.get()) == 0) {
+                    Statement exists(database.get(), "SELECT 1 FROM availability_slots WHERE id = ?");
+                    exists.bind(1, id);
+                    const int result = sqlite3_step(exists.get());
+                    if (result == SQLITE_ROW) {
+                        setError(response, 409, "Esse horário já foi reservado e não pode ser removido.");
+                    } else if (result == SQLITE_DONE) {
+                        setError(response, 404, "Horário não encontrado.");
+                    } else {
+                        throw std::runtime_error(sqlite3_errmsg(database.get()));
+                    }
+                    return;
+                }
+                response.status = 204;
+            } catch (const std::invalid_argument& error) {
+                setError(response, 400, error.what());
+            } catch (const std::exception& error) {
+                handleApiError(response, error);
+            }
+        });
+
     server.Get("/api/admin/appointments", [](const httplib::Request& request, httplib::Response& response) {
         try {
             AuthenticatedUser user;
@@ -949,6 +1520,19 @@ void registerRoutes(httplib::Server& server) {
             }
             std::lock_guard<std::mutex> lock(database_mutex);
             setJson(response, listAppointments(user, true));
+        } catch (const std::exception& error) {
+            handleApiError(response, error);
+        }
+    });
+
+    server.Get("/api/availability", [](const httplib::Request& request, httplib::Response& response) {
+        try {
+            AuthenticatedUser user;
+            if (!requireAuthentication(request, response, user)) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(database_mutex);
+            setJson(response, listAvailability(false));
         } catch (const std::exception& error) {
             handleApiError(response, error);
         }
@@ -967,6 +1551,96 @@ void registerRoutes(httplib::Server& server) {
         }
     });
 
+    server.Get("/api/notifications", [](const httplib::Request& request, httplib::Response& response) {
+        try {
+            AuthenticatedUser user;
+            if (!requireAuthentication(request, response, user)) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(database_mutex);
+            setJson(response, listNotifications(user));
+        } catch (const std::exception& error) {
+            handleApiError(response, error);
+        }
+    });
+
+    server.Post(
+        R"(/api/appointments/(\d+)/confirm)",
+        [](const httplib::Request& request, httplib::Response& response) {
+            try {
+                AuthenticatedUser user;
+                if (!requireAuthentication(request, response, user)) {
+                    return;
+                }
+                if (user.isAdmin()) {
+                    setError(response, 403, "Somente o paciente pode confirmar a própria consulta.");
+                    return;
+                }
+                const auto id = parseId(request.matches[1].str());
+                std::lock_guard<std::mutex> lock(database_mutex);
+                Statement appointment(
+                    database.get(),
+                    "SELECT confirmed_at, "
+                    "datetime(appointment_date || ' ' || start_time) > datetime('now', 'localtime') "
+                    "AND datetime(appointment_date || ' ' || start_time) "
+                    "<= datetime('now', 'localtime', '+24 hours') "
+                    "FROM appointments WHERE id = ? AND owner_user_id = ?");
+                appointment.bind(1, id);
+                appointment.bind(2, user.id);
+                const int result = sqlite3_step(appointment.get());
+                if (result == SQLITE_DONE) {
+                    setError(response, 404, "Consulta não encontrada.");
+                    return;
+                }
+                if (result != SQLITE_ROW) {
+                    throw std::runtime_error(sqlite3_errmsg(database.get()));
+                }
+                if (sqlite3_column_type(appointment.get(), 0) != SQLITE_NULL) {
+                    const auto* timestamp = sqlite3_column_text(appointment.get(), 0);
+                    setJson(response, {
+                        {"appointmentId", id},
+                        {"status", "confirmed"},
+                        {"confirmedAt", timestamp == nullptr
+                             ? Json(nullptr)
+                             : Json(reinterpret_cast<const char*>(timestamp))}
+                    });
+                    return;
+                }
+                if (sqlite3_column_int(appointment.get(), 1) == 0) {
+                    setError(response, 409, "A confirmação ficará disponível 24 horas antes da consulta.");
+                    return;
+                }
+
+                Statement confirm(
+                    database.get(),
+                    "UPDATE appointments SET confirmed_at = datetime('now', 'localtime'), "
+                    "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_user_id = ? "
+                    "AND confirmed_at IS NULL");
+                confirm.bind(1, id);
+                confirm.bind(2, user.id);
+                if (sqlite3_step(confirm.get()) != SQLITE_DONE) {
+                    throw std::runtime_error(sqlite3_errmsg(database.get()));
+                }
+                Statement confirmed_at(database.get(), "SELECT confirmed_at FROM appointments WHERE id = ?");
+                confirmed_at.bind(1, id);
+                if (sqlite3_step(confirmed_at.get()) != SQLITE_ROW) {
+                    throw std::runtime_error(sqlite3_errmsg(database.get()));
+                }
+                const auto* timestamp = sqlite3_column_text(confirmed_at.get(), 0);
+                setJson(response, {
+                    {"appointmentId", id},
+                    {"status", "confirmed"},
+                    {"confirmedAt", timestamp == nullptr
+                         ? Json(nullptr)
+                         : Json(reinterpret_cast<const char*>(timestamp))}
+                });
+            } catch (const std::invalid_argument& error) {
+                setError(response, 400, error.what());
+            } catch (const std::exception& error) {
+                handleApiError(response, error);
+            }
+        });
+
     server.Post("/api/appointments", [](const httplib::Request& request, httplib::Response& response) {
         try {
             AuthenticatedUser user;
@@ -976,12 +1650,24 @@ void registerRoutes(httplib::Server& server) {
             const auto body = Json::parse(request.body);
             Json appointment;
             std::string validation_error;
-            if (!readAppointment(body, appointment, validation_error)) {
+            if (!readAppointment(body, user, appointment, validation_error)) {
                 setError(response, 400, validation_error);
                 return;
             }
-
+            sqlite3_int64 slot_id = 0;
+            if (!readAvailabilitySlotId(body, user, slot_id, validation_error)) {
+                setError(response, 400, validation_error);
+                return;
+            }
             std::lock_guard<std::mutex> lock(database_mutex);
+            if (slot_id > 0 && !slotIsAvailable(
+                    slot_id,
+                    appointment["date"].get<std::string>(),
+                    appointment["startTime"].get<std::string>(),
+                    appointment["endTime"].get<std::string>())) {
+                setError(response, 409, "Esse horário não está mais disponível. Atualize a agenda e escolha outro.");
+                return;
+            }
             if (hasConflict(
                     appointment["date"].get<std::string>(),
                     appointment["startTime"].get<std::string>(),
@@ -994,8 +1680,9 @@ void registerRoutes(httplib::Server& server) {
             Statement statement(
                 database.get(),
                 "INSERT INTO appointments "
-                "(title, client, appointment_date, start_time, end_time, notes, owner_user_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)");
+                "(title, client, appointment_date, start_time, end_time, notes, owner_user_id, "
+                "availability_slot_id, payment_type, insurance_name) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             statement.bind(1, appointment["title"].get<std::string>());
             statement.bind(2, appointment["client"].get<std::string>());
             statement.bind(3, appointment["date"].get<std::string>());
@@ -1003,11 +1690,19 @@ void registerRoutes(httplib::Server& server) {
             statement.bind(5, appointment["endTime"].get<std::string>());
             statement.bind(6, appointment["notes"].get<std::string>());
             statement.bind(7, user.id);
+            if (slot_id > 0) {
+                statement.bind(8, slot_id);
+            } else {
+                statement.bindNull(8);
+            }
+            statement.bind(9, appointment["paymentType"].get<std::string>());
+            statement.bind(10, appointment["insuranceName"].get<std::string>());
             if (sqlite3_step(statement.get()) != SQLITE_DONE) {
                 throw std::runtime_error(sqlite3_errmsg(database.get()));
             }
             appointment["id"] = sqlite3_last_insert_rowid(database.get());
             appointment["ownerUsername"] = user.username;
+            appointment["confirmedAt"] = nullptr;
             setJson(response, appointment, 201);
         } catch (const Json::parse_error&) {
             setError(response, 400, "O corpo da requisição não contém JSON válido.");
@@ -1028,15 +1723,19 @@ void registerRoutes(httplib::Server& server) {
                 const auto body = Json::parse(request.body);
                 Json appointment;
                 std::string validation_error;
-                if (!readAppointment(body, appointment, validation_error)) {
+                if (!readAppointment(body, user, appointment, validation_error)) {
                     setError(response, 400, validation_error);
                     return;
                 }
-
+                sqlite3_int64 slot_id = 0;
+                if (!readAvailabilitySlotId(body, user, slot_id, validation_error)) {
+                    setError(response, 400, validation_error);
+                    return;
+                }
                 std::lock_guard<std::mutex> lock(database_mutex);
                 Statement existing(
                     database.get(),
-                    "SELECT owner_user_id, users.username FROM appointments "
+                    "SELECT owner_user_id, users.username, availability_slot_id FROM appointments "
                     "LEFT JOIN users ON users.id = appointments.owner_user_id "
                     "WHERE appointments.id = ?");
                 existing.bind(1, id);
@@ -1060,6 +1759,15 @@ void registerRoutes(httplib::Server& server) {
                 const auto* owner_name = sqlite3_column_text(existing.get(), 1);
                 const std::string owner_username =
                     owner_name == nullptr ? std::string() : std::string(reinterpret_cast<const char*>(owner_name));
+                if (slot_id > 0 && !slotIsAvailable(
+                        slot_id,
+                        appointment["date"].get<std::string>(),
+                        appointment["startTime"].get<std::string>(),
+                        appointment["endTime"].get<std::string>(),
+                        id)) {
+                    setError(response, 409, "Esse horário não está mais disponível. Atualize a agenda e escolha outro.");
+                    return;
+                }
                 if (hasConflict(
                         appointment["date"].get<std::string>(),
                         appointment["startTime"].get<std::string>(),
@@ -1072,15 +1780,23 @@ void registerRoutes(httplib::Server& server) {
                 Statement statement(
                     database.get(),
                     "UPDATE appointments SET title = ?, client = ?, appointment_date = ?, "
-                    "start_time = ?, end_time = ?, notes = ?, updated_at = CURRENT_TIMESTAMP "
-                    "WHERE id = ?");
+                    "start_time = ?, end_time = ?, notes = ?, availability_slot_id = ?, "
+                    "payment_type = ?, insurance_name = ?, confirmed_at = NULL, "
+                    "updated_at = CURRENT_TIMESTAMP WHERE id = ?");
                 statement.bind(1, appointment["title"].get<std::string>());
                 statement.bind(2, appointment["client"].get<std::string>());
                 statement.bind(3, appointment["date"].get<std::string>());
                 statement.bind(4, appointment["startTime"].get<std::string>());
                 statement.bind(5, appointment["endTime"].get<std::string>());
                 statement.bind(6, appointment["notes"].get<std::string>());
-                statement.bind(7, id);
+                if (slot_id > 0) {
+                    statement.bind(7, slot_id);
+                } else {
+                    statement.bindNull(7);
+                }
+                statement.bind(8, appointment["paymentType"].get<std::string>());
+                statement.bind(9, appointment["insuranceName"].get<std::string>());
+                statement.bind(10, id);
                 if (sqlite3_step(statement.get()) != SQLITE_DONE) {
                     throw std::runtime_error(sqlite3_errmsg(database.get()));
                 }
@@ -1090,6 +1806,8 @@ void registerRoutes(httplib::Server& server) {
                 }
                 appointment["id"] = id;
                 appointment["ownerUsername"] = owner_username;
+                appointment["availabilitySlotId"] = slot_id > 0 ? Json(slot_id) : Json(nullptr);
+                appointment["confirmedAt"] = nullptr;
                 setJson(response, appointment);
             } catch (const Json::parse_error&) {
                 setError(response, 400, "O corpo da requisição não contém JSON válido.");

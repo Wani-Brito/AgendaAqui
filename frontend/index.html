@@ -19,11 +19,15 @@
         <div class="panel-heading">
           <div>
             <p class="eyebrow">SUA AGENDA, PROTEGIDA</p>
-            <h1 class="auth-title">Bem-vindo de volta.</h1>
+            <h1 class="auth-title" id="auth-title">Bem-vindo de volta.</h1>
           </div>
           <span class="heading-icon" aria-hidden="true">↗</span>
         </div>
-        <p class="auth-copy">Entre com seu usuário e sua senha para acessar seus compromissos.</p>
+        <p class="auth-copy" id="auth-copy">Entre com seu usuário e sua senha para acessar seus compromissos.</p>
+        <div class="auth-tabs" role="tablist" aria-label="Acesso à agenda">
+          <button class="auth-tab active" id="login-tab" type="button" role="tab" aria-selected="true" aria-controls="login-form">Entrar</button>
+          <button class="auth-tab" id="register-tab" type="button" role="tab" aria-selected="false" aria-controls="register-form">Criar conta</button>
+        </div>
         <form class="auth-form" id="login-form">
           <label for="login-username">Usuário</label>
           <input id="login-username" name="username" autocomplete="username" minlength="3" maxlength="64" required>
@@ -32,8 +36,18 @@
           <button class="button button-primary login-button" id="login-button" type="submit">Entrar na agenda</button>
           <p class="message hidden" id="login-message" role="alert"></p>
         </form>
+        <form class="auth-form hidden" id="register-form">
+          <label for="register-username">Escolha um usuário</label>
+          <input id="register-username" name="username" autocomplete="username" minlength="3" maxlength="64" pattern="[A-Za-z0-9_.\-]{3,64}" title="Use de 3 a 64 caracteres: letras, números, ponto, hífen ou sublinhado." required>
+          <label for="register-password">Crie uma senha</label>
+          <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required>
+          <label for="register-password-confirm">Confirme a senha</label>
+          <input id="register-password-confirm" name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required>
+          <button class="button button-primary login-button" id="register-button" type="submit">Criar conta e entrar</button>
+          <p class="message hidden" id="register-message" role="alert"></p>
+        </form>
       </div>
-      <p class="auth-footnote">Seus dados de acesso são protegidos e armazenados com segurança.</p>
+      <p class="auth-footnote">Novas contas têm acesso somente aos próprios compromissos.</p>
     </section>
 
     <div id="app-view" class="hidden">
@@ -44,7 +58,23 @@
         </a>
         <div class="topbar-actions">
           <span class="today" id="today-label"></span>
-          <button class="button button-quiet admin-tab hidden" id="admin-tab" type="button">Admin</button>
+          <div class="notification-wrapper">
+            <button class="notification-button" id="notification-button" type="button" aria-label="Notificações" aria-expanded="false" aria-controls="notification-panel">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+              </svg>
+              <span class="notification-count hidden" id="notification-count">0</span>
+            </button>
+            <section class="notification-panel hidden" id="notification-panel" aria-label="Notificações">
+              <div class="notification-panel-heading">
+                <h2>Notificações</h2>
+                <button class="notification-close" id="notification-close" type="button" aria-label="Fechar notificações">×</button>
+              </div>
+              <div class="notification-list" id="notification-list" aria-live="polite">
+                <p class="empty-state">Carregando notificações...</p>
+              </div>
+            </section>
+          </div>
           <button class="button button-quiet logout-button" id="logout-button" type="button">Sair</button>
         </div>
       </header>
@@ -64,39 +94,39 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">AGENDA</p>
-                <h2 id="form-heading">Novo compromisso</h2>
+                <h2 id="form-heading">Agendar consulta</h2>
               </div>
               <span class="heading-icon" aria-hidden="true">＋</span>
             </div>
 
             <form id="appointment-form">
               <input id="appointment-id" type="hidden">
-              <label for="title">Compromisso</label>
-              <input id="title" name="title" maxlength="120" placeholder="Ex.: Consulta de retorno" required>
+              <label for="specialty-select">Especialidade</label>
+              <select id="specialty-select" required>
+                <option value="" selected disabled>Selecione uma especialidade</option>
+              </select>
 
-              <label for="client">Cliente ou responsável</label>
-              <input id="client" name="client" maxlength="120" placeholder="Nome da pessoa" required>
+              <label for="availability-slot">Horário disponível</label>
+              <select id="availability-slot" name="availabilitySlotId" required disabled>
+                <option value="" selected disabled>Escolha primeiro a especialidade</option>
+              </select>
+              <p class="availability-help">Os horários são cadastrados pelo Admin. Escolha um horário disponível para reservar a consulta na sua conta.</p>
 
-              <div class="field-row">
-                <div>
-                  <label for="date">Data</label>
-                  <input id="date" name="date" type="date" required>
-                </div>
-                <div>
-                  <label for="start-time">Horário</label>
-                  <div class="time-row">
-                    <input id="start-time" name="startTime" type="time" aria-label="Horário inicial" required>
-                    <span aria-hidden="true">–</span>
-                    <input id="end-time" name="endTime" type="time" aria-label="Horário final" required>
-                  </div>
-                </div>
+              <label for="payment-type">Tipo de atendimento</label>
+              <select id="payment-type" name="paymentType" required>
+                <option value="particular" selected>Particular</option>
+                <option value="convenio">Convênio</option>
+              </select>
+              <div class="hidden" id="insurance-field">
+                <label for="insurance-name">Nome do convênio</label>
+                <input id="insurance-name" name="insuranceName" maxlength="120" autocomplete="organization">
               </div>
 
               <label for="notes">Observações <span class="optional">(opcional)</span></label>
               <textarea id="notes" name="notes" rows="3" maxlength="500" placeholder="Algum detalhe importante?"></textarea>
 
               <div class="form-actions">
-                <button class="button button-primary" id="save-button" type="submit">Salvar compromisso</button>
+                <button class="button button-primary" id="save-button" type="submit">Agendar consulta</button>
                 <button class="button button-quiet hidden" id="cancel-edit" type="button">Cancelar edição</button>
               </div>
               <p class="message hidden" id="form-message" role="status"></p>
@@ -125,55 +155,66 @@
           <div>
             <p class="eyebrow">CONTROLE DE ACESSO</p>
             <h1>Painel <span>Admin.</span></h1>
-            <p class="intro-copy">Gerencie contas e acompanhe todos os compromissos da agenda.</p>
+            <p class="intro-copy">Cadastre horários de atendimento e acompanhe as reservas dos pacientes.</p>
           </div>
           <button class="button button-quiet" id="back-to-agenda" type="button">Voltar à agenda</button>
         </section>
 
-        <section class="admin-grid">
-          <section class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">NOVO ACESSO</p>
-                <h2>Criar usuário</h2>
-              </div>
-              <span class="heading-icon" aria-hidden="true">＋</span>
-            </div>
-            <form id="user-form">
-              <label for="new-username">Usuário</label>
-              <input id="new-username" name="username" minlength="3" maxlength="64" pattern="[A-Za-z0-9_.-]{3,64}" autocomplete="off" required>
-              <label for="new-password">Senha inicial</label>
-              <input id="new-password" name="password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required>
-              <p class="auth-copy">A senha deve ter pelo menos 12 caracteres. O usuário poderá entrar e ver somente os próprios compromissos.</p>
-              <button class="button button-primary login-button" id="create-user-button" type="submit">Criar usuário</button>
-              <p class="message hidden" id="user-form-message" role="status"></p>
-            </form>
-          </section>
-
-          <section class="panel">
-            <div class="panel-heading list-heading">
-              <div>
-                <p class="eyebrow">CONTAS DO SISTEMA</p>
-                <h2>Usuários</h2>
-              </div>
-              <span class="count" id="user-count">0</span>
-            </div>
-            <div class="admin-list" id="user-list" aria-live="polite">
-              <p class="empty-state">Carregando usuários...</p>
-            </div>
-          </section>
-        </section>
-
-        <section class="panel admin-appointments-panel">
-          <div class="panel-heading list-heading">
+        <section class="panel admin-availability-panel">
+          <div class="panel-heading">
             <div>
-              <p class="eyebrow">VISÃO COMPLETA</p>
-              <h2>Todas as consultas</h2>
+              <p class="eyebrow">AGENDA DA CLÍNICA</p>
+              <h2>Horários de atendimento</h2>
             </div>
-            <span class="count" id="admin-appointment-count">0</span>
+            <span class="heading-icon" aria-hidden="true">＋</span>
           </div>
-          <div class="appointment-list" id="admin-appointment-list" aria-live="polite">
-            <p class="empty-state">Carregando consultas...</p>
+          <div class="availability-management-grid">
+            <form id="availability-form">
+              <div class="availability-form-grid">
+                <div>
+                  <label for="availability-specialty">Especialidade</label>
+                  <select id="availability-specialty" name="specialty" required>
+                    <option value="" selected disabled>Selecione uma especialidade</option>
+                    <option value="Dermatologista">Dermatologista</option>
+                    <option value="Cardiologista">Cardiologista</option>
+                    <option value="Cirurgião plástico">Cirurgião plástico</option>
+                    <option value="__other__">Outros</option>
+                  </select>
+                </div>
+                <div class="hidden" id="custom-specialty-field">
+                  <label for="custom-specialty">Qual especialidade?</label>
+                  <input id="custom-specialty" maxlength="100" placeholder="Digite a especialidade">
+                </div>
+                <div>
+                  <label for="availability-professional">Nome do profissional</label>
+                  <input id="availability-professional" name="professionalName" maxlength="120" autocomplete="name" required>
+                </div>
+                <div>
+                  <label for="availability-date">Data</label>
+                  <input id="availability-date" name="date" type="date" required>
+                </div>
+                <div>
+                  <label for="availability-start">Horário inicial</label>
+                  <input id="availability-start" name="startTime" type="time" required>
+                </div>
+                <div>
+                  <label for="availability-end">Horário final</label>
+                  <input id="availability-end" name="endTime" type="time" required>
+                </div>
+                <button class="button button-primary availability-submit" id="availability-save-button" type="submit">Salvar horário</button>
+              </div>
+              <p class="availability-help">O horário ficará disponível para qualquer paciente que tenha uma conta.</p>
+              <p class="message hidden" id="availability-form-message" role="status"></p>
+            </form>
+            <section aria-label="Horários cadastrados">
+              <div class="panel-heading list-heading availability-list-heading">
+                <h2>Consultas</h2>
+                <span class="count" id="availability-count">0</span>
+              </div>
+              <div class="admin-list" id="admin-availability-list" aria-live="polite">
+                <p class="empty-state">Carregando horários...</p>
+              </div>
+            </section>
           </div>
         </section>
       </section>
